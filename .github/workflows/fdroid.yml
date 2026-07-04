@@ -33,17 +33,25 @@ jobs:
       - name: Install F-Droid tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y fdroidserver openjdk-17-jdk
+          sudo apt-get install -y openjdk-17-jdk python3-venv python3-pip
+          python3 -m venv fdroid-venv
+          . fdroid-venv/bin/activate
+          pip install --upgrade pip
+          pip install fdroidserver==2.4.5
+          echo "$PWD/fdroid-venv/bin" >> $GITHUB_PATH
+          fdroid --version
 
       - name: Prepare APK folder
         run: |
           rm -rf repo archive public
           mkdir -p repo
           cp input-apks/*.apk repo/
+          ls -lh repo/
 
       - name: Restore repository signing key
         run: |
           echo "${{ secrets.FDROID_KEYSTORE_BASE64 }}" | base64 -d > fdroid-repo-key.jks
+          chmod 600 fdroid-repo-key.jks
           ls -lh fdroid-repo-key.jks
 
       - name: Create F-Droid config
@@ -61,6 +69,8 @@ jobs:
           keystorepass: {env: FDROID_KEYSTORE_PASS}
           keypass: {env: FDROID_KEY_PASS}
           EOF
+          chmod 600 config.yml
+          cat config.yml
 
       - name: Generate F-Droid index
         env:
@@ -69,27 +79,34 @@ jobs:
         run: |
           fdroid update -c
           fdroid update
+          ls -lh repo/
 
       - name: Prepare GitHub Pages site
         run: |
           mkdir -p public
           cp -r repo public/repo
-          if [ -d archive ]; then cp -r archive public/archive; fi
+
+          if [ -d archive ]; then
+            cp -r archive public/archive
+          fi
 
           cat > public/index.html <<EOF
           <!doctype html>
           <html lang="es">
           <head>
             <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>RIFTWORLD F-Droid Repo</title>
           </head>
           <body>
             <h1>RIFTWORLD F-Droid Repo</h1>
-            <p>URL del repositorio:</p>
+            <p>URL del repositorio para añadir en F-Droid:</p>
             <pre>https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/repo</pre>
           </body>
           </html>
           EOF
+
+          ls -R public
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
