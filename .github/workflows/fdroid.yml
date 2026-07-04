@@ -1,0 +1,104 @@
+name: Publish F-Droid Repo
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "input-apks/**"
+      - ".github/workflows/fdroid.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install F-Droid tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fdroidserver openjdk-17-jdk
+
+      - name: Prepare APK folder
+        run: |
+          rm -rf repo archive public
+          mkdir -p repo
+          cp input-apks/*.apk repo/
+
+      - name: Restore repository signing key
+        run: |
+          echo "${{ secrets.FDROID_KEYSTORE_BASE64 }}" | base64 -d > fdroid-repo-key.jks
+          ls -lh fdroid-repo-key.jks
+
+      - name: Create F-Droid config
+        run: |
+          cat > config.yml <<'EOF'
+          repo_name: RIFTWORLD
+          repo_description: Repositorio F-Droid de RIFTWORLD
+          repo_url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/repo
+          archive_name: RIFTWORLD Archive
+          archive_description: Archivo de versiones antiguas de RIFTWORLD
+          archive_url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/archive
+          keystore: fdroid-repo-key.jks
+          repo_keyalias: riftworld
+          keydname: CN=BAKRAX, OU=RIFTWORLD, O=BAKRAX, L=Santanyi, S=Illes Balears, C=ES
+          keystorepass: {env: FDROID_KEYSTORE_PASS}
+          keypass: {env: FDROID_KEY_PASS}
+          EOF
+
+      - name: Generate F-Droid index
+        env:
+          FDROID_KEYSTORE_PASS: ${{ secrets.FDROID_KEYSTORE_PASS }}
+          FDROID_KEY_PASS: ${{ secrets.FDROID_KEY_PASS }}
+        run: |
+          fdroid update -c
+          fdroid update
+
+      - name: Prepare GitHub Pages site
+        run: |
+          mkdir -p public
+          cp -r repo public/repo
+          if [ -d archive ]; then cp -r archive public/archive; fi
+
+          cat > public/index.html <<EOF
+          <!doctype html>
+          <html lang="es">
+          <head>
+            <meta charset="utf-8">
+            <title>RIFTWORLD F-Droid Repo</title>
+          </head>
+          <body>
+            <h1>RIFTWORLD F-Droid Repo</h1>
+            <p>URL del repositorio:</p>
+            <pre>https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/repo</pre>
+          </body>
+          </html>
+          EOF
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
