@@ -70,7 +70,6 @@ jobs:
           keypass: {env: FDROID_KEY_PASS}
           EOF
           chmod 600 config.yml
-          cat config.yml
 
       - name: Generate F-Droid index
         env:
@@ -115,7 +114,10 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: public
+          name: github-pages-${{ github.run_attempt }}
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
